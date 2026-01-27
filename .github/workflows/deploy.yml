@@ -1,0 +1,31 @@
+name: Deploy to Hugging Face Space
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Hugging Face Registry
+        run: echo "${{ secrets.HF_TOKEN }}" | docker login registry.hf.space -u ${{ secrets.HF_USERNAME }} --password-stdin
+
+      - name: Build and Push Docker Image
+        env:
+          HF_USERNAME: ${{ secrets.HF_USERNAME }}
+          SPACE_NAME: ${{ secrets.SPACE_NAME }}
+        run: |
+          # The image tag format is registry.hf.space/<username>/<space-name>:latest
+          IMAGE_TAG="registry.hf.space/$HF_USERNAME/$SPACE_NAME:latest"
+          
+          echo "Building image: $IMAGE_TAG"
+          docker build -t $IMAGE_TAG .
+          
+          echo "Pushing image to Hugging Face Space..."
+          docker push $IMAGE_TAG
