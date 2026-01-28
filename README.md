@@ -49,9 +49,13 @@ Microk8s uses its own containerd registry, so it cannot see images built by your
 # 1. Save the image to a tar file
 docker save ollama-local:latest > ollama-local.tar
 
-# 2. Import it into Microk8s
+# 2. Import it into Microk8s (namespace k8s.io is required!)
 microk8s ctr image import ollama-local.tar
+# If the above doesn't work or the pod assumes the image is missing, try explicitly specifying the namespace:
+microk8s ctr --namespace k8s.io image import ollama-local.tar
 ```
+*Tip: usage of `microk8s images import ollama-local.tar` (if available on your version) also handles this automatically.*
+
 *Tip: If you update the image, you must repeat these steps and restart the pod.*
 
 **Note for Minikube users:**

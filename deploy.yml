@@ -29,9 +29,9 @@ spec:
     spec:
       containers:
       - name: ollama
-        image: ollama-local:latest
-        # IfNotPresent is important for using locally built images without a registry
-        imagePullPolicy: IfNotPresent
+        image: docker.io/library/ollama-local:latest
+        # Never forces K8s to use the local image or fail immediately (no network pull)
+        imagePullPolicy: Never
         ports:
         - containerPort: 7860
         resources:
