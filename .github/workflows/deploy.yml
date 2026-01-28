@@ -13,11 +13,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Normalize Inputs
+        # Create consistent lowercase variables for all steps to avoid case-sensitivity issues
+        run: |
+          echo "HF_USERNAME_LOWER=$(echo "${{ secrets.HF_USERNAME }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "SPACE_NAME_LOWER=$(echo "${{ secrets.SPACE_NAME }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - name: Validate and Setup Hugging Face Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HF_USERNAME: ${{ secrets.HF_USERNAME }}
-          SPACE_NAME: ${{ secrets.SPACE_NAME }}
+          # Pass the lowercased env vars to the script
+          HF_USERNAME: ${{ env.HF_USERNAME_LOWER }}
+          SPACE_NAME: ${{ env.SPACE_NAME_LOWER }}
         run: |
           pip install huggingface_hub
           cat << 'EOF' > setup_space.py
@@ -41,21 +48,18 @@ jobs:
                   print(f'::error::Authentication failed: {e}')
                   sys.exit(1)
               
-              # Prepare Lowercase Names
-              username = os.environ.get('HF_USERNAME', '').lower()
-              space = os.environ.get('SPACE_NAME', '').lower()
+              # Use the normalized variables provided by GITHUB_ENV
+              username = os.environ.get('HF_USERNAME')
+              space = os.environ.get('SPACE_NAME')
               
-              if not username or not space:
-                   print('::error::HF_USERNAME or SPACE_NAME is missing')
-                   sys.exit(1)
-                   
+              print(f'Configuring Space: {username}/{space}')
               repo_id = f'{username}/{space}'
-              print(f'Targeting Repo: {repo_id}')
               
               # Check/Create Repo
               try:
                   info = api.repo_info(repo_id=repo_id, repo_type='space')
-                  print(f'Repo found. Current SDK: {info.sdk}')
+                  print(f'Repo found: {info.id}')
+                  print(f'Current SDK: {info.sdk}')
                   if info.sdk != 'docker':
                        print(f'::error::Repo exists but SDK is "{info.sdk}", not "docker". Cannot deploy Docker image.')
                        sys.exit(1)
@@ -76,17 +80,16 @@ jobs:
           python setup_space.py
 
       - name: Login to Hugging Face Registry
-        run: echo "${{ secrets.HF_TOKEN }}" | docker login registry.hf.space -u ${{ secrets.HF_USERNAME }} --password-stdin
+        # Use the SAME lowercase username for login
+        run: echo "${{ secrets.HF_TOKEN }}" | docker login registry.hf.space -u ${{ env.HF_USERNAME_LOWER }} --password-stdin
 
       - name: Build and Push Docker Image
         env:
-          HF_USERNAME: ${{ secrets.HF_USERNAME }}
-          SPACE_NAME: ${{ secrets.SPACE_NAME }}
+          HF_USERNAME: ${{ env.HF_USERNAME_LOWER }}
+          SPACE_NAME: ${{ env.SPACE_NAME_LOWER }}
         run: |
-          # Docker requires lowercase for repository names
-          HF_USERNAME_LOWER=$(echo "$HF_USERNAME" | tr '[:upper:]' '[:lower:]')
-          SPACE_NAME_LOWER=$(echo "$SPACE_NAME" | tr '[:upper:]' '[:lower:]')
-          IMAGE_TAG="registry.hf.space/$HF_USERNAME_LOWER/$SPACE_NAME_LOWER:latest"
+          # Use the explicitly lowercased variables
+          IMAGE_TAG="registry.hf.space/$HF_USERNAME/$SPACE_NAME:latest"
           
           echo "Building image: $IMAGE_TAG"
           docker build -t $IMAGE_TAG .
