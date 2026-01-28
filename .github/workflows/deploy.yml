@@ -13,14 +13,67 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Create HF Space if missing
+      - name: Validate and Setup Hugging Face Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_USERNAME: ${{ secrets.HF_USERNAME }}
           SPACE_NAME: ${{ secrets.SPACE_NAME }}
         run: |
           pip install huggingface_hub
-          python -c "import os; from huggingface_hub import HfApi; api = HfApi(token=os.environ['HF_TOKEN']); repo_id = f\"{os.environ['HF_USERNAME'].lower()}/{os.environ['SPACE_NAME'].lower()}\"; api.create_repo(repo_id=repo_id, repo_type='space', space_sdk='docker', exist_ok=True)"
+          cat << 'EOF' > setup_space.py
+          import os
+          import sys
+          from huggingface_hub import HfApi
+          
+          try:
+              token = os.environ.get('HF_TOKEN')
+              if not token:
+                  print('::error::HF_TOKEN is missing')
+                  sys.exit(1)
+                  
+              api = HfApi(token=token)
+              
+              # Verify login
+              try:
+                  user = api.whoami()
+                  print(f'Authenticated as: {user["name"]}')
+              except Exception as e:
+                  print(f'::error::Authentication failed: {e}')
+                  sys.exit(1)
+              
+              # Prepare Lowercase Names
+              username = os.environ.get('HF_USERNAME', '').lower()
+              space = os.environ.get('SPACE_NAME', '').lower()
+              
+              if not username or not space:
+                   print('::error::HF_USERNAME or SPACE_NAME is missing')
+                   sys.exit(1)
+                   
+              repo_id = f'{username}/{space}'
+              print(f'Targeting Repo: {repo_id}')
+              
+              # Check/Create Repo
+              try:
+                  info = api.repo_info(repo_id=repo_id, repo_type='space')
+                  print(f'Repo found. Current SDK: {info.sdk}')
+                  if info.sdk != 'docker':
+                       print(f'::error::Repo exists but SDK is "{info.sdk}", not "docker". Cannot deploy Docker image.')
+                       sys.exit(1)
+              except Exception as e:
+                  if '404' in str(e):
+                      print('Repo not found, creating...')
+                      api.create_repo(repo_id=repo_id, repo_type='space', space_sdk='docker')
+                      print('Repo created successfully.')
+                  else:
+                      print(f'::error::Failed to check repo info: {e}')
+                      sys.exit(1)
+
+          except Exception as e:
+              print(f'::error::Setup script failed: {e}')
+              sys.exit(1)
+          EOF
+          
+          python setup_space.py
 
       - name: Login to Hugging Face Registry
         run: echo "${{ secrets.HF_TOKEN }}" | docker login registry.hf.space -u ${{ secrets.HF_USERNAME }} --password-stdin
