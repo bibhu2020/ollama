@@ -20,7 +20,7 @@ jobs:
           SPACE_NAME: ${{ secrets.SPACE_NAME }}
         run: |
           pip install huggingface_hub
-          python -c "import os; from huggingface_hub import HfApi; api = HfApi(token=os.environ['HF_TOKEN']); repo_id = f\"{os.environ['HF_USERNAME']}/{os.environ['SPACE_NAME']}\"; api.create_repo(repo_id=repo_id, repo_type='space', space_sdk='docker', exist_ok=True)"
+          python -c "import os; from huggingface_hub import HfApi; api = HfApi(token=os.environ['HF_TOKEN']); repo_id = f\"{os.environ['HF_USERNAME'].lower()}/{os.environ['SPACE_NAME'].lower()}\"; api.create_repo(repo_id=repo_id, repo_type='space', space_sdk='docker', exist_ok=True)"
 
       - name: Login to Hugging Face Registry
         run: echo "${{ secrets.HF_TOKEN }}" | docker login registry.hf.space -u ${{ secrets.HF_USERNAME }} --password-stdin
@@ -30,8 +30,10 @@ jobs:
           HF_USERNAME: ${{ secrets.HF_USERNAME }}
           SPACE_NAME: ${{ secrets.SPACE_NAME }}
         run: |
-          # The image tag format is registry.hf.space/<username>/<space-name>:latest
-          IMAGE_TAG="registry.hf.space/$HF_USERNAME/$SPACE_NAME:latest"
+          # Docker requires lowercase for repository names
+          HF_USERNAME_LOWER=$(echo "$HF_USERNAME" | tr '[:upper:]' '[:lower:]')
+          SPACE_NAME_LOWER=$(echo "$SPACE_NAME" | tr '[:upper:]' '[:lower:]')
+          IMAGE_TAG="registry.hf.space/$HF_USERNAME_LOWER/$SPACE_NAME_LOWER:latest"
           
           echo "Building image: $IMAGE_TAG"
           docker build -t $IMAGE_TAG .
