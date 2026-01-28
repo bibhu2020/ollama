@@ -1,18 +1,12 @@
 ---
-title: Ollama server
-emoji: 🤖
+title: Ollama
+emoji: ⚡
 colorFrom: pink
-colorTo: yellow
+colorTo: blue
 sdk: docker
-sdk_version: "0.0.1"
-app_file: app.py
 pinned: false
 license: mit
-tags:
-  - ollama
-  - llama3.2
-  - llm
-short_description: Ollama running llama3.2
+short_description: Ollama (llama3.2:3b) on Hugging Face Spaces (Docker)
 ---
 
 
