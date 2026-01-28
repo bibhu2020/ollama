@@ -1,95 +1,158 @@
-# Ollama on Hugging Face Spaces & Local Kubernetes
+---
+title: Ollama server
+emoji: 🤖
+colorFrom: pink
+colorTo: yellow
+sdk: docker
+sdk_version: "0.0.1"
+app_file: app.py
+pinned: false
+license: mit
+tags:
+  - ollama
+  - llama3.2
+  - llm
+short_description: Ollama running llama3.2
+---
 
-This project provides a Docker setup to run [Ollama](https://ollama.com/) with the `llama3.2:3b` model. It is designed to be hosted on a Hugging Face Space or deployed to a local Kubernetes cluster.
 
-## Prerequisites
+# 🦙 Ollama (llama3.2:3b) on Hugging Face Spaces (Docker)
 
-1.  **Hugging Face Account** (for Spaces deployment): You need an account on [huggingface.co](https://huggingface.co/).
-2.  **Kubernetes Cluster** (for local deployment): Docker Desktop (with Kubernetes enabled), Minikube, or similar.
-3.  **Kubectl**: The Kubernetes command-line tool.
+This Space runs **[Ollama](https://ollama.com/)** with the **`llama3.2:3b`** model using a **Docker-based Hugging Face Space**.
 
-## Deployment Option 1: Hugging Face Spaces
+The container starts Ollama, pulls the model at runtime, and exposes the Ollama HTTP API so you can interact with the model programmatically.
 
-1.  **Create a Space**:
-    *   Go to "New Space".
-    *   Enter a name (e.g., `ollama-llama3`).
-    *   Select **Docker** as the SDK.
-    *   Select **Blank** as the template.
-    *   **Hardware**: "Free CPU" works fine for this 3B model.
+---
 
-2.  **Setup GitHub Actions** (Automatic Deployment):
-    To enable automatic deployment from this repository:
-    *   Go to your GitHub repository **Settings > Secrets and variables > Actions**.
-    *   Add the following **Repository secrets**:
-        *   `HF_USERNAME`: Your Hugging Face username.
-        *   `HF_TOKEN`: A Write access token from your [Hugging Face Settings](https://huggingface.co/settings/tokens).
-        *   `SPACE_NAME`: The name of the Space you created.
+## 🚀 Hugging Face Space Configuration
 
-## Deployment Option 2: Local Kubernetes
+When creating the Space:
 
-You can also run this setup effectively on your local machine using Kubernetes.
+- **SDK**: `Docker`
+- **Template**: `Blank`
+- **Hardware**: `Free CPU` (sufficient for 3B models)
+- **Visibility**: Public or Private (your choice)
 
-### 1. Build the Docker Image
-First, build the image locally. You must tag it as `ollama-local:latest` so the Kubernetes manifest finds it.
+No additional configuration files are required beyond this repository.
 
+---
+
+## 🧱 How It Works
+
+- Ollama runs inside a Docker container
+- The model `llama3.2:3b` is pulled on startup
+- Ollama listens on port **11434**
+- Hugging Face automatically maps the port and exposes the Space URL
+
+---
+
+## 📡 API Usage
+
+Once the Space is running, you can interact with Ollama via HTTP.
+
+### Check version
+```bash
+curl https://<your-space>.hf.space/api/version
+```
+
+### Generate text
+```bash
+curl https://<your-space>.hf.space/api/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "llama3.2:3b",
+    "prompt": "Explain Kubernetes like I am five"
+  }'
+```
+
+---
+
+## 🔄 Automatic Deployment (GitHub → Hugging Face)
+
+You can deploy automatically using **GitHub Actions**.
+
+### Required Secrets (GitHub Repository)
+
+Go to **Settings → Secrets and variables → Actions**, then add:
+
+| Secret Name | Description |
+|------------|------------|
+| `HF_USERNAME` | Your Hugging Face username |
+| `HF_TOKEN` | Hugging Face **Write** access token |
+| `SPACE_NAME` | Name of the Hugging Face Space |
+
+The workflow logs in to:
+```
+registry.hf.space
+```
+and pushes the Docker image, triggering a redeploy of the Space.
+
+---
+
+## 🧪 Local Development (Optional)
+
+You can run the same container locally for testing.
+
+### Build the image
 ```bash
 docker build -t ollama-local:latest .
 ```
 
-**Troubleshooting Build Errors:**
-If you encounter DNS errors like `dial tcp: lookup ... i/o timeout` during the build step, use the `--network=host` flag to allow the build process to use your host's network connection:
+If you hit DNS/network issues:
 ```bash
 docker build --network=host -t ollama-local:latest .
 ```
 
-**Note for Microk8s users:**
-Microk8s uses its own containerd registry, so it cannot see images built by your local Docker daemon by default. You must export and import the image:
-
+### Run locally
 ```bash
-# 1. Save the image to a tar file
-docker save ollama-local:latest > ollama-local.tar
-
-# 2. Import it into Microk8s (namespace k8s.io is required!)
-microk8s ctr image import ollama-local.tar
-# If the above doesn't work or the pod assumes the image is missing, try explicitly specifying the namespace:
-microk8s ctr --namespace k8s.io image import ollama-local.tar
+docker run -p 11434:11434 ollama-local:latest
 ```
-*Tip: usage of `microk8s images import ollama-local.tar` (if available on your version) also handles this automatically.*
 
-*Tip: If you update the image, you must repeat these steps and restart the pod.*
-
-**Note for Minikube users:**
-If you are using Minikube, you must build the image *inside* the Minikube environment so the cluster can see it:
+Test:
 ```bash
-eval $(minikube docker-env)
+curl http://localhost:11434/api/version
+```
+
+---
+
+## ☸️ Local Kubernetes Deployment (Optional)
+
+This project can also be deployed to a local Kubernetes cluster (Docker Desktop, Minikube, MicroK8s).
+
+### Build the image
+```bash
 docker build -t ollama-local:latest .
 ```
 
-### 2. Deploy to Kubernetes
-Apply the `local.yml` manifest, which creates a Deployment and a NodePort Service.
-
+### Deploy
 ```bash
 kubectl apply -f local.yml
 ```
 
-### 3. Access the Service
-The service is exposed on **NodePort 30786**.
+### Access the service
+- **Docker Desktop**:  
+  `http://localhost:30786`
+- **Minikube**:
+  ```bash
+  echo "http://$(minikube ip):30786"
+  ```
 
-*   **Docker Desktop (Windows/Mac)**: Access via localhost.
-    *   Endpoint: `http://localhost:30786`
-*   **Minikube**: You need the Minikube IP.
-    ```bash
-    echo "http://$(minikube ip):30786"
-    ```
-
-### Verify it works
-You can use `curl` or the `ollama` CLI to test the connection.
-
+Verify:
 ```bash
-# Using curl
 curl http://localhost:30786/api/version
-
-# Using ollama CLI
-export OLLAMA_HOST=http://localhost:30786
-ollama list
 ```
+
+---
+
+## ⚠️ Notes & Limitations
+
+- Free CPU Spaces are **slow** for inference (expected for LLMs)
+- Model downloads happen at container startup
+- Hugging Face Spaces may restart containers periodically
+
+---
+
+## 📚 References
+
+- Ollama: https://ollama.com/
+- Hugging Face Spaces (Docker): https://huggingface.co/docs/hub/spaces-sdks-docker
