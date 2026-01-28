@@ -13,6 +13,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Create HF Space if missing
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_USERNAME: ${{ secrets.HF_USERNAME }}
+          SPACE_NAME: ${{ secrets.SPACE_NAME }}
+        run: |
+          pip install huggingface_hub
+          python -c "import os; from huggingface_hub import HfApi; api = HfApi(token=os.environ['HF_TOKEN']); repo_id = f\"{os.environ['HF_USERNAME']}/{os.environ['SPACE_NAME']}\"; api.create_repo(repo_id=repo_id, repo_type='space', space_sdk='docker', exist_ok=True)"
+
       - name: Login to Hugging Face Registry
         run: echo "${{ secrets.HF_TOKEN }}" | docker login registry.hf.space -u ${{ secrets.HF_USERNAME }} --password-stdin
 
