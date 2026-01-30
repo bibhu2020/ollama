@@ -7,7 +7,8 @@ import time
 # Configuration
 # If running outside k8s (e.g. from your WSL terminal), use localhost and the NodePort
 # If running inside k8s, you would use http://ollama-service:7860
-OLLAMA_URL = "http://localhost:30786/api/generate"
+# OLLAMA_URL = "http://localhost:30786/api/generate"
+OLLAMA_URL = "https://mishrabp-ollama.hf.space/api/generate"
 MODEL = "llama3.2:3b"
 
 def query_ollama(prompt):
