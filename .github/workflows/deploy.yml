@@ -9,114 +9,88 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Normalize Inputs
         run: |
-          # Use awk to trim leading/trailing whitespace and tr to lowercase
           HF_USERNAME_LOWER=$(echo "${{ secrets.HF_USERNAME }}" | awk '{$1=$1};1' | tr '[:upper:]' '[:lower:]')
           SPACE_NAME_LOWER=$(echo "${{ secrets.SPACE_NAME }}" | awk '{$1=$1};1' | tr '[:upper:]' '[:lower:]')
           echo "HF_USERNAME_LOWER=$HF_USERNAME_LOWER" >> $GITHUB_ENV
           echo "SPACE_NAME_LOWER=$SPACE_NAME_LOWER" >> $GITHUB_ENV
 
-      - name: Validate and Setup Hugging Face Space
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Hugging Face Hub
+        run: pip install --upgrade huggingface_hub
+
+      - name: Validate / Create Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_USERNAME: ${{ env.HF_USERNAME_LOWER }}
           SPACE_NAME: ${{ env.SPACE_NAME_LOWER }}
         run: |
-          pip install huggingface_hub
-          cat << 'EOF' > setup_space.py
+          python << 'EOF'
           import os
           import sys
-          from huggingface_hub import HfApi, HfFileSystem
-          
+          from huggingface_hub import HfApi
+
+          token = os.environ["HF_TOKEN"]
+          username = os.environ["HF_USERNAME"]
+          space = os.environ["SPACE_NAME"]
+
+          repo_id = f"{username}/{space}"
+          api = HfApi(token=token)
+
           try:
-              token = os.environ.get('HF_TOKEN')
-              if not token:
-                  print('::error::HF_TOKEN is missing')
-                  sys.exit(1)
-                  
-              api = HfApi(token=token)
-              fs = HfFileSystem(token=token)
-              
-              # Verify login
-              try:
-                  user = api.whoami()
-                  print(f'Authenticated as: {user["name"]} ({user["type"]})')
-              except Exception as e:
-                  print(f'::error::Authentication failed: {e}')
-                  sys.exit(1)
-              
-              # Use the normalized variables
-              username = os.environ.get('HF_USERNAME', '').strip()
-              space = os.environ.get('SPACE_NAME', '').strip()
-              
-              if not username or not space:
-                   print('::error::HF_USERNAME or SPACE_NAME is missing')
-                   sys.exit(1)
-
-              repo_id = f'{username}/{space}'
-              print(f'Targeting Repo: {repo_id}')
-              
-              # Check/Create Repo
-              try:
-                  info = api.repo_info(repo_id=repo_id, repo_type='space')
-                  print(f'Repo found: {info.id} (SDK: {info.sdk})')
-                  
-                  if info.sdk != 'docker':
-                       print(f'::warning::Repo exists but SDK is "{info.sdk}". This might fail. Ideally, convert to "docker" or create a new space.')
-                       # Typically we cannot easily convert via API without changing README. 
-                       # Let's try to update the README if it's not docker.
-                  
-              except Exception as e:
-                  if '404' in str(e):
-                      print('Repo not found, creating...')
-                      api.create_repo(repo_id=repo_id, repo_type='space', space_sdk='docker')
-                      print('Repo created successfully.')
-                  else:
-                      print(f'::error::Failed to check repo info: {e}')
-                      sys.exit(1)
-
-              # Ensure README exists and has correct metadata
-              # Docker registry sometimes 404s if the repo is empty or corrupted
-              readme_path = f'spaces/{repo_id}/README.md'
-              try:
-                  if not fs.exists(readme_path):
-                      print('README.md missing, creating default Docker README...')
-                      readme_content = f"---\ntitle: {space}\nemoji: 🐳\ncolorFrom: blue\ncolorTo: indigo\nsdk: docker\napp_port: 7860\n---\n\n# {space}"
-                      api.upload_file(
-                          path_or_fileobj=readme_content.encode('utf-8'),
-                          path_in_repo="README.md",
-                          repo_id=repo_id,
-                          repo_type="space"
-                      )
-                      print('README.md created.')
-              except Exception as e:
-                   print(f'::warning::Detailed file check failed: {e}')
-
+              info = api.repo_info(repo_id=repo_id, repo_type="space")
+              print(f"Space exists: {info.id} (sdk={info.sdk})")
           except Exception as e:
-              print(f'::error::Setup script failed: {e}')
-              sys.exit(1)
+              if "404" in str(e):
+                  print("Space not found. Creating...")
+                  api.create_repo(
+                      repo_id=repo_id,
+                      repo_type="space",
+                      space_sdk="gradio",   # change if needed
+                      private=False
+                  )
+                  print("Space created.")
+              else:
+                  raise
           EOF
-          
-          python setup_space.py
 
-      - name: Login to Hugging Face Registry
-        # Use generic user to avoid org/user mismatch issues
-        run: echo "${{ secrets.HF_TOKEN }}" | docker login registry.hf.space -u hf_user --password-stdin
-
-      - name: Build and Push Docker Image
+      - name: Upload repository files to Hugging Face Space
         env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_USERNAME: ${{ env.HF_USERNAME_LOWER }}
           SPACE_NAME: ${{ env.SPACE_NAME_LOWER }}
         run: |
-          IMAGE_TAG="registry.hf.space/$HF_USERNAME/$SPACE_NAME:latest"
-          
-          echo "Building image: $IMAGE_TAG"
-          docker build -t $IMAGE_TAG .
-          
-          echo "Pushing image to Hugging Face Space..."
-          docker push $IMAGE_TAG
+          python << 'EOF'
+          import os
+          from huggingface_hub import HfApi
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          repo_id = f'{os.environ["HF_USERNAME"]}/{os.environ["SPACE_NAME"]}'
+
+          print(f"Uploading files to {repo_id}...")
+
+          api.upload_folder(
+              folder_path=".",
+              repo_id=repo_id,
+              repo_type="space",
+              ignore_patterns=[
+                  ".git/*",
+                  ".github/*",
+                  "__pycache__/*",
+                  "*.pyc",
+                  ".venv/*"
+              ]
+          )
+
+          print("Upload completed successfully.")
+          EOF
